@@ -23,6 +23,9 @@ const usersCollection = db.collection('users');
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
     const user = await usersCollection.findOne({ username, role: 'user' });
     if (!user) {
       return res.status(401).json({ error: 'Invalid username or password' });
@@ -37,7 +40,7 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role
       },
-      token: 'dummy-token-user' // Replace with JWT if needed
+      token: 'dummy-token-user'
     });
   } catch (err) {
     console.error('Error during user login:', err);
@@ -49,6 +52,9 @@ router.post('/login', async (req, res) => {
 router.post('/adminLogin', async (req, res) => {
   try {
     const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
     const user = await usersCollection.findOne({ username, role: 'admin' });
     if (!user) {
       return res.status(401).json({ error: 'Invalid username or password' });
@@ -63,7 +69,7 @@ router.post('/adminLogin', async (req, res) => {
         email: user.email,
         role: user.role
       },
-      token: 'dummy-token-admin' // Replace with JWT if needed
+      token: 'dummy-token-admin'
     });
   } catch (err) {
     console.error('Error during admin login:', err);
@@ -71,7 +77,7 @@ router.post('/adminLogin', async (req, res) => {
   }
 });
 
-// Get all users (for ManageBookingsComponent dropdowns)
+// Get all users
 router.get('/', async (req, res) => {
   try {
     const users = await usersCollection.find().toArray();
