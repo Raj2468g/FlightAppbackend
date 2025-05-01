@@ -56,127 +56,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login endpoint
-router.post('/login', async (req, res) => {
-  const db = req.app.locals.db;
-  try {
-    const { username, password, role } = req.body;
-
-    console.log('Login request:', { username, password, role });
-    if (!username || !password || !role) {
-      console.log('Missing fields:', { username, password, role });
-      return res.status(400).json({ success: false, error: 'Missing username, password, or role' });
-    }
-
-    const user = await db.collection('users').findOne({ 
-      username: { $regex: `^${username}$`, $options: 'i' },
-      password,
-      role: { $regex: `^${role}$`, $options: 'i' }
-    });
-
-    if (user) {
-      console.log('User found:', { _id: user._id, username: user.username, role: user.role });
-      res.json({ success: true, userId: user._id, role: user.role });
-    } else {
-      console.log('No user found for:', { username, password, role });
-      const users = await db.collection('users').find({ username: { $regex: `^${username}$`, $options: 'i' } }).toArray();
-      console.log('Users with username:', users);
-      res.status(401).json({ success: false, error: 'Invalid credentials' });
-    }
-  } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ success: false, error: 'Server error' });
-  }
-});
-
-// Get all bookings
-router.get('/bookings', async (req, res) => {
-  const db = req.app.locals.db;
-  try {
-    const bookings = await db.collection('bookings').find().toArray();
-    console.log('Bookings fetched:', bookings.length);
-    res.json(bookings);
-  } catch (err) {
-    console.error('Error fetching bookings:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Delete a booking
-router.delete('/bookings/:bookingId', async (req, res) => {
-  const db = req.app.locals.db;
-  try {
-    const { bookingId } = req.params;
-    const result = await db.collection('bookings').deleteOne({ _id: bookingId });
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-    console.log('Booking deleted:', bookingId);
-    res.json({ success: true, message: 'Booking deleted successfully' });
-  } catch (err) {
-    console.error('Error deleting booking:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Get all users
-router.get('/users', async (req, res) => {
-  const db = req.app.locals.db;
-  try {
-    const users = await db.collection('users').find().toArray();
-    console.log('Users fetched:', users.length);
-    res.json(users);
-  } catch (err) {
-    console.error('Error fetching users:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Update a user
-router.put('/users/:userId', async (req, res) => {
-  const db = req.app.locals.db;
-  try {
-    const { userId } = req.params;
-    const { username, email, role } = req.body;
-
-    if (!username || !email || !role) {
-      return res.status(400).json({ error: 'Username, email, and role are required' });
-    }
-
-    const result = await db.collection('users').updateOne(
-      { _id: userId },
-      { $set: { username, email, role } }
-    );
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    console.log('User updated:', userId);
-    res.json({ success: true, message: 'User updated successfully' });
-  } catch (err) {
-    console.error('Error updating user:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Delete a user
-router.delete('/users/:userId', async (req, res) => {
-  const db = req.app.locals.db;
-  try {
-    const { userId } = req.params;
-    const result = await db.collection('users').deleteOne({ _id: userId });
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    console.log('User deleted:', userId);
-    res.json({ success: true, message: 'User deleted successfully' });
-  } catch (err) {
-    console.error('Error deleting user:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 // Booking endpoint
 router.post('/', async (req, res) => {
   const db = req.app.locals.db;
@@ -215,6 +94,39 @@ router.get('/user/:userId', async (req, res) => {
   } catch (err) {
     console.error('Error fetching bookings:', err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Login endpoint
+router.post('/login', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const { username, password, role } = req.body;
+
+    console.log('Login request:', { username, password, role });
+    if (!username || !password || !role) {
+      console.log('Missing fields:', { username, password, role });
+      return res.status(400).json({ success: false, error: 'Missing username, password, or role' });
+    }
+
+    const user = await db.collection('users').findOne({ 
+      username: { $regex: `^${username}$`, $options: 'i' },
+      password,
+      role: { $regex: `^${role}$`, $options: 'i' }
+    });
+
+    if (user) {
+      console.log('User found:', { _id: user._id, username: user.username, role: user.role });
+      res.json({ success: true, userId: user._id, role: user.role });
+    } else {
+      console.log('No user found for:', { username, password, role });
+      const users = await db.collection('users').find({ username: { $regex: `^${username}$`, $options: 'i' } }).toArray();
+      console.log('Users with username:', users);
+      res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ success: false, error: 'Server error' });
   }
 });
 
