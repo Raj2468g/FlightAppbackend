@@ -7,7 +7,7 @@ const app = express();
 const port = 5000;
 const mongoUrl = 'mongodb://localhost:27017';
 const dbName = 'flightapp';
-const jwtSecret = 'your_jwt_secret'; // Replace with a secure secret
+const jwtSecret = 'your_jwt_secret'; // Replace with a secure secret in production
 
 app.use(cors());
 app.use(express.json());
@@ -42,10 +42,17 @@ function authenticateToken(req, res, next) {
   }
 }
 
-// User Routes
-app.get('/api/users', authenticateToken, async (req, res) => {
+// Admin-only middleware
+function adminOnly(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}
+
+// User Routes (Admin-only)
+app.get('/api/users', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const users = await db.collection('users').find().toArray();
     res.json(users);
   } catch (err) {
@@ -54,11 +61,11 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/users', authenticateToken, async (req, res) => {
+app.post('/api/users', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const user = req.body;
     user.createdAt = new Date().toISOString();
+    user.role = user.role || 'user';
     const result = await db.collection('users').insertOne(user);
     res.status(201).json({ _id: result.insertedId, ...user });
   } catch (err) {
@@ -67,9 +74,8 @@ app.post('/api/users', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/users/:id', authenticateToken, async (req, res) => {
+app.put('/api/users/:id', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const { id } = req.params;
     const user = req.body;
     delete user._id;
@@ -85,9 +91,8 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', authenticateToken, async (req, res) => {
+app.delete('/api/users/:id', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const { id } = req.params;
     const result = await db.collection('users').deleteOne({ _id: new ObjectId(id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: 'User not found' });
@@ -101,7 +106,6 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
 // Flight Routes
 app.get('/api/flights', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const flights = await db.collection('flights').find().toArray();
     res.json(flights);
   } catch (err) {
@@ -110,11 +114,10 @@ app.get('/api/flights', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/flights', authenticateToken, async (req, res) => {
+app.post('/api/flights', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const flight = req.body;
-    flight.availableTickets = flight.maxTickets; // Initialize available tickets
+    flight.availableTickets = flight.maxTickets;
     const result = await db.collection('flights').insertOne(flight);
     res.status(201).json({ _id: result.insertedId, ...flight });
   } catch (err) {
@@ -123,9 +126,8 @@ app.post('/api/flights', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/flights/:id', authenticateToken, async (req, res) => {
+app.put('/api/flights/:id', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const { id } = req.params;
     const flight = req.body;
     delete flight._id;
@@ -141,9 +143,8 @@ app.put('/api/flights/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.delete('/api/flights/:id', authenticateToken, async (req, res) => {
+app.delete('/api/flights/:id', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const { id } = req.params;
     const result = await db.collection('flights').deleteOne({ _id: new ObjectId(id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: 'Flight not found' });
@@ -155,9 +156,8 @@ app.delete('/api/flights/:id', authenticateToken, async (req, res) => {
 });
 
 // Booking Routes
-app.get('/api/bookings', authenticateToken, async (req, res) => {
+app.get('/api/bookings', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const bookings = await db.collection('bookings').find().toArray();
     res.json(bookings);
   } catch (err) {
@@ -166,15 +166,30 @@ app.get('/api/bookings', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/bookings/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (req.user._id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const bookings = await db.collection('bookings').find({ userId }).toArray();
+    res.json(bookings);
+  } catch (err) {
+    console.error('Error fetching user bookings:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
+  }
+});
+
 app.post('/api/bookings', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const booking = req.body;
     const flight = await db.collection('flights').findOne({ _id: new ObjectId(booking.flightId) });
     if (!flight) return res.status(404).json({ error: 'Flight not found' });
     if (booking.seats > flight.availableTickets) {
       return res.status(400).json({ error: 'Not enough available tickets' });
     }
+    booking.userId = req.user._id;
+    booking.username = req.user.username;
     const result = await db.collection('bookings').insertOne(booking);
     await db.collection('flights').updateOne(
       { _id: new ObjectId(booking.flightId) },
@@ -187,9 +202,8 @@ app.post('/api/bookings', authenticateToken, async (req, res) => {
   }
 });
 
-app.put('/api/bookings/:id', authenticateToken, async (req, res) => {
+app.put('/api/bookings/:id', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const { id } = req.params;
     const booking = req.body;
     delete booking._id;
@@ -217,9 +231,8 @@ app.put('/api/bookings/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
+app.delete('/api/bookings/:id', authenticateToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     const { id } = req.params;
     const booking = await db.collection('bookings').findOne({ _id: new ObjectId(id) });
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
@@ -237,15 +250,27 @@ app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
 });
 
 // Login Routes
-app.post('/api/login', async (req, res) => {
+app.post('/api/userLogin', async (req, res) => {
   try {
     const { username, password } = req.body;
+    console.log('Received userLogin request:', { username });
     const user = await db.collection('users').findOne({ username, password });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ _id: user._id, username: user.username, role: user.role }, jwtSecret, { expiresIn: '1h' });
-    res.json({ user, token });
+    if (!user) {
+      console.log('Invalid credentials for user:', username);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const token = jwt.sign(
+      { _id: user._id, username: user.username, role: user.role },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+    console.log('Login successful for user:', username);
+    res.json({
+      token,
+      user: { _id: user._id, username: user.username, role: user.role }
+    });
   } catch (err) {
-    console.error('Error logging in:', err);
+    console.error('Error in userLogin:', err);
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 });
@@ -253,12 +278,24 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/adminLogin', async (req, res) => {
   try {
     const { username, password } = req.body;
+    console.log('Received adminLogin request:', { username });
     const user = await db.collection('users').findOne({ username, password, role: 'admin' });
-    if (!user) return res.status(401).json({ error: 'Invalid admin credentials' });
-    const token = jwt.sign({ _id: user._id, username: user.username, role: user.role }, jwtSecret, { expiresIn: '1h' });
-    res.json({ user, token });
+    if (!user) {
+      console.log('Invalid admin credentials for:', username);
+      return res.status(401).json({ error: 'Invalid admin credentials' });
+    }
+    const token = jwt.sign(
+      { _id: user._id, username: user.username, role: user.role },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+    console.log('Admin login successful:', username);
+    res.json({
+      token,
+      user: { _id: user._id, username: user.username, role: user.role }
+    });
   } catch (err) {
-    console.error('Error logging in as admin:', err);
+    console.error('Error in adminLogin:', err);
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 });
