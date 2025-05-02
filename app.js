@@ -7,7 +7,7 @@ const app = express();
 const port = 5000;
 const mongoUrl = 'mongodb://localhost:27017';
 const dbName = 'flightapp';
-const jwtSecret = 'your_jwt_secret'; // Replace with a secure secret in production
+const jwtSecret = 'your_jwt_secret'; // Replace with secure secret in production
 
 app.use(cors());
 app.use(express.json());
@@ -50,7 +50,58 @@ function adminOnly(req, res, next) {
   next();
 }
 
-// User Routes (Admin-only)
+// Auth Routes
+app.post('/api/userLogin', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    console.log('Received userLogin request:', { username });
+    const user = await db.collection('users').findOne({ username, password });
+    if (!user) {
+      console.log('Invalid credentials for user:', username);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const token = jwt.sign(
+      { _id: user._id, username: user.username, role: user.role },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+    console.log('Login successful for user:', username);
+    res.json({
+      token,
+      user: { _id: user._id, username: user.username, role: user.role }
+    });
+  } catch (err) {
+    console.error('Error in userLogin:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
+  }
+});
+
+app.post('/api/adminLogin', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    console.log('Received adminLogin request:', { username });
+    const user = await db.collection('users').findOne({ username, password, role: 'admin' });
+    if (!user) {
+      console.log('Invalid admin credentials for:', username);
+      return res.status(401).json({ error: 'Invalid admin credentials' });
+    }
+    const token = jwt.sign(
+      { _id: user._id, username: user.username, role: user.role },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+    console.log('Admin login successful:', username);
+    res.json({
+      token,
+      user: { _id: user._id, username: user.username, role: user.role }
+    });
+  } catch (err) {
+    console.error('Error in adminLogin:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
+  }
+});
+
+// User Routes
 app.get('/api/users', authenticateToken, adminOnly, async (req, res) => {
   try {
     const users = await db.collection('users').find().toArray();
@@ -245,57 +296,6 @@ app.delete('/api/bookings/:id', authenticateToken, adminOnly, async (req, res) =
     res.status(204).send();
   } catch (err) {
     console.error('Error deleting booking:', err);
-    res.status(500).json({ error: 'Server error', details: err.message });
-  }
-});
-
-// Login Routes
-app.post('/api/userLogin', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    console.log('Received userLogin request:', { username });
-    const user = await db.collection('users').findOne({ username, password });
-    if (!user) {
-      console.log('Invalid credentials for user:', username);
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    const token = jwt.sign(
-      { _id: user._id, username: user.username, role: user.role },
-      jwtSecret,
-      { expiresIn: '1h' }
-    );
-    console.log('Login successful for user:', username);
-    res.json({
-      token,
-      user: { _id: user._id, username: user.username, role: user.role }
-    });
-  } catch (err) {
-    console.error('Error in userLogin:', err);
-    res.status(500).json({ error: 'Server error', details: err.message });
-  }
-});
-
-app.post('/api/adminLogin', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    console.log('Received adminLogin request:', { username });
-    const user = await db.collection('users').findOne({ username, password, role: 'admin' });
-    if (!user) {
-      console.log('Invalid admin credentials for:', username);
-      return res.status(401).json({ error: 'Invalid admin credentials' });
-    }
-    const token = jwt.sign(
-      { _id: user._id, username: user.username, role: user.role },
-      jwtSecret,
-      { expiresIn: '1h' }
-    );
-    console.log('Admin login successful:', username);
-    res.json({
-      token,
-      user: { _id: user._id, username: user.username, role: user.role }
-    });
-  } catch (err) {
-    console.error('Error in adminLogin:', err);
     res.status(500).json({ error: 'Server error', details: err.message });
   }
 });
