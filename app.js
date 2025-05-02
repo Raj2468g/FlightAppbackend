@@ -1,3 +1,4 @@
+// app.js
 const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
@@ -49,6 +50,38 @@ function adminOnly(req, res, next) {
   }
   next();
 }
+
+// Register Route
+app.post('/api/register', async (req, res) => {
+  try {
+    const { username, password, phone, email, gender, role } = req.body;
+    console.log('Received registration request:', { username, email });
+    
+    // Check if user already exists
+    const existingUser = await db.collection('users').findOne({ $or: [{ username }, { email }] });
+    if (existingUser) {
+      console.log('User already exists:', { username, email });
+      return res.status(400).json({ success: false, message: 'Username or email already exists' });
+    }
+
+    const user = {
+      username,
+      password, // Note: Password is stored in plain text as per your request
+      phone: phone || '',
+      email,
+      gender: gender || '',
+      role: role || 'user',
+      createdAt: new Date().toISOString()
+    };
+
+    const result = await db.collection('users').insertOne(user);
+    console.log('User registered successfully:', { username, email });
+    res.status(201).json({ success: true, message: 'Registration successful' });
+  } catch (err) {
+    console.error('Error in registration:', err);
+    res.status(500).json({ error: 'Server error', details: err.message });
+  }
+});
 
 // Auth Routes
 app.post('/api/userLogin', async (req, res) => {
