@@ -2,11 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 
-// Get all users
+// Get all users with role 'user' (case-insensitive)
 router.get('/', async (req, res) => {
   try {
     const db = req.app.locals.db;
-    const users = await db.collection('users').find({}).toArray();
+    const users = await db.collection('users').find({ role: { $regex: '^user$', $options: 'i' } }).toArray();
     res.json(users);
   } catch (err) {
     console.error('Error fetching users:', err);
