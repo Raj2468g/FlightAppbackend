@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { MongoClient, ObjectId } = require('mongodb');
+const verifyToken = require('../middleware/auth');
 
 const uri = 'mongodb://localhost:27017';
 const client = new MongoClient(uri);
@@ -22,14 +23,14 @@ const flightsCollection = db.collection('flights');
 const usersCollection = db.collection('users');
 
 // Get all bookings
-router.get('/', async (req, res) => {
+router.get('/', verifyToken, async (req, res) => {
   try {
     const bookings = await bookingsCollection.find().toArray();
     console.log('Raw bookings from DB:', bookings);
     const bookingsWithDetails = await Promise.all(
       bookings.map(async (booking) => {
-        const flight = await flightsCollection.findOne({ flightNumber: booking.flightId });
-        const user = await usersCollection.findOne({ username: booking.userId });
+        const flight = await flightsCollection.findOne({ _id: new ObjectId(booking.flightId) });
+        const user = await usersCollection.findOne({ _id: new ObjectId(booking.userId) });
         return {
           ...booking,
           flightNumber: flight?.flightNumber || 'Unknown',
@@ -45,43 +46,62 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Add a booking
-router.post('/', async (req, res) => {
+// Get user bookings
+router.get('/user/:userId', verifyToken, async (req, res) => {
   try {
-    const flight = await flightsCollection.findOne({ flightNumber: req.body.flightId });
+    const userId = req.params.userId;
+    if (req.user.id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Cannot view bookings of other users.' });
+    }
+    const bookings = await bookingsCollection.find({ userId: new ObjectId(userId) }).toArray();
+    console.log('Raw user bookings from DB:', bookings);
+    const bookingsWithDetails = await Promise.all(
+      bookings.map(async (booking) => {
+        const flight = await flightsCollection.findOne({ _id: new ObjectId(booking.flightId) });
+        const user = await usersCollection.findOne({ _id: new ObjectId(booking.userId) });
+        return {
+          ...booking,
+          flightNumber: flight?.flightNumber || 'Unknown',
+          username: user?.username || 'Unknown'
+        };
+      })
+    );
+    console.log('Fetched user bookings:', bookingsWithDetails);
+    res.json(bookingsWithDetails);
+  } catch (err) {
+    console.error('Error fetching user bookings:', err);
+    res.status(500).json({ error: 'Failed to fetch user bookings', details: err.message });
+  }
+});
+
+// Add a booking
+router.post('/', verifyToken, async (req, res) => {
+  try {
+    const flight = await flightsCollection.findOne({ _id: new ObjectId(req.body.flightId) });
     if (!flight) {
       return res.status(404).json({ error: 'Flight not found' });
     }
-    const user = await usersCollection.findOne({ username: req.body.userId });
+    const user = await usersCollection.findOne({ _id: new ObjectId(req.body.userId) });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     if (req.body.seats > flight.availableTickets) {
       return res.status(400).json({ error: `Only ${flight.availableTickets} tickets available` });
     }
-    const bookedSeats = flight.bookedSeats || [];
-    const requestedSeats = req.body.seatNumber;
-    if (requestedSeats.some(seat => bookedSeats.includes(seat))) {
-      return res.status(400).json({ error: 'One or more seat numbers are already booked' });
-    }
     const booking = {
-      flightId: req.body.flightId,
+      flightId: new ObjectId(req.body.flightId),
       flightNumber: flight.flightNumber,
-      userId: req.body.userId,
+      userId: new ObjectId(req.body.userId),
       username: user.username,
       seats: req.body.seats,
-      seatNumber: req.body.seatNumber,
       totalPrice: req.body.seats * flight.price,
       bookingDate: req.body.bookingDate
     };
     console.log('Adding booking:', booking);
     const result = await bookingsCollection.insertOne(booking);
     await flightsCollection.updateOne(
-      { flightNumber: req.body.flightId },
-      {
-        $inc: { availableTickets: -req.body.seats },
-        $push: { bookedSeats: { $each: req.body.seatNumber } }
-      }
+      { _id: new ObjectId(req.body.flightId) },
+      { $inc: { availableTickets: -req.body.seats } }
     );
     console.log('Booking added:', result.insertedId);
     res.status(201).json({ ...booking, _id: result.insertedId });
@@ -92,12 +112,16 @@ router.post('/', async (req, res) => {
 });
 
 // Delete a booking
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
     const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
+    }
+    // Check if user owns the booking or is admin
+    if (booking.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. You can only cancel your own bookings.' });
     }
     console.log('Deleting booking:', id);
     const result = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
@@ -105,11 +129,8 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
     await flightsCollection.updateOne(
-      { flightNumber: booking.flightId },
-      {
-        $inc: { availableTickets: booking.seats },
-        $pullAll: { bookedSeats: booking.seatNumber }
-      }
+      { _id: booking.flightId },
+      { $inc: { availableTickets: booking.seats } }
     );
     console.log('Booking deleted:', id);
     res.status(204).send();

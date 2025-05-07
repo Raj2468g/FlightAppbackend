@@ -1,4 +1,3 @@
-// app.js
 const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
@@ -315,11 +314,14 @@ app.put('/api/bookings/:id', authenticateToken, adminOnly, async (req, res) => {
   }
 });
 
-app.delete('/api/bookings/:id', authenticateToken, adminOnly, async (req, res) => {
+app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const booking = await db.collection('bookings').findOne({ _id: new ObjectId(id) });
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.userId !== req.user._id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. You can only cancel your own bookings.' });
+    }
     const result = await db.collection('bookings').deleteOne({ _id: new ObjectId(id) });
     if (result.deletedCount === 0) return res.status(404).json({ error: 'Booking not found' });
     await db.collection('flights').updateOne(

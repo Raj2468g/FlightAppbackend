@@ -80,5 +80,47 @@ router.post('/adminLogin', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+router.post('/check-username', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    const user = await db.collection('users').findOne({ username });
+    res.json({ exists: !!user });
+  } catch (err) {
+    console.error('Check username error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/register', async (req, res) => {
+  const db = req.app.locals.db;
+  try {
+    const { username, password, email, phone, gender, role } = req.body;
+    if (!username || !password || !email || !role) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const existingUser = await db.collection('users').findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Username already exists' });
+    }
+    const result = await db.collection('users').insertOne({
+      username,
+      password, // Note: Should hash password in production
+      email,
+      phone: phone || '',
+      gender: gender || '',
+      role,
+      name: ''
+    });
+    console.log('User registered:', { _id: result.insertedId, username });
+    res.json({ success: true, message: 'Registration successful' });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
 module.exports = router;
